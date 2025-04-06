@@ -1,0 +1,425 @@
+# Import necessary libraries
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import json
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
+from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer
+import os
+
+# Set random seed for reproducibility
+np.random.seed(42)
+
+# Create directory for submission if it doesn't exist
+os.makedirs('submission', exist_ok=True)
+
+# Load the CSV files
+import pandas as pd
+
+# Use raw string for Windows path
+booking_log = pd.read_csv(r'C:\Users\barig\Downloads\ds-assignment-master\data\raw\booking_log.csv')
+participant_log = pd.read_csv(r'C:\Users\barig\Downloads\ds-assignment-master\data\raw\participant_log.csv')
+
+# Display basic information
+print("Booking Log Shape:", booking_log.shape)
+print("Participant Log Shape:", participant_log.shape)
+
+# Look at column names
+print("\nBooking Log Columns:", booking_log.columns.tolist())
+print("\nParticipant Log Columns:", participant_log.columns.tolist())
+
+# View a few sample rows
+print("\nBooking Log Sample:")
+print(booking_log.head())
+
+print("\nParticipant Log Sample:")
+print(participant_log.head())
+
+# Check event types
+if 'event' in participant_log.columns:
+    print("\nParticipant event types:")
+    print(participant_log['event'].value_counts())
+elif 'event_type' in participant_log.columns:
+    print("\nParticipant event types:")
+    print(participant_log['event_type'].value_counts())
+
+# Define a function to create features for model training
+def create_features(booking_df, participant_df):
+    # Create a list to hold all rows for our final dataframe
+    rows = []
+    
+    # Get all unique order_ids
+    order_ids = participant_df['order_id'].unique()
+    
+    # For each order, create features for each driver
+    for order_id in order_ids:
+        # Get all participants (drivers) for this order
+        order_participants = participant_df[participant_df['order_id'] == order_id]
+        
+        # Get order details
+        order_info = booking_df[booking_df['order_id'] == order_id]
+        
+        # Skip if no order info found
+        if len(order_info) == 0:
+            continue
+            
+        # For each driver that participated in this order
+        for _, participant in order_participants.iterrows():
+            driver_id = participant['driver_id']
+            
+            # Create a feature row
+            row = {
+                'order_id': order_id,
+                'driver_id': driver_id
+            }
+            
+            # Add order-level features
+            # (Adjust these based on your actual booking_log columns)
+            if 'distance' in order_info.columns:
+                row['distance'] = order_info['distance'].values[0]
+            if 'pickup_lat' in order_info.columns and 'pickup_long' in order_info.columns:
+                row['pickup_lat'] = order_info['pickup_lat'].values[0]
+                row['pickup_long'] = order_info['pickup_long'].values[0]
+            
+            # Add driver-level features
+            # (Adjust these based on your actual participant_log columns)
+            if 'driver_lat' in participant.index and 'driver_long' in participant.index:
+                row['driver_lat'] = participant['driver_lat']
+                row['driver_long'] = participant['driver_long']
+                
+                # Calculate distance to pickup if coordinates are available
+                if 'pickup_lat' in row and 'pickup_long' in row:
+                    import numpy as np
+                    row['distance_to_pickup'] = np.sqrt(
+                        (row['pickup_lat'] - row['driver_lat'])**2 + 
+                        (row['pickup_long'] - row['driver_long'])**2
+                    )
+            
+            # Add the target variable - whether driver accepted
+            # (Adjust based on how acceptance is recorded in your data)
+            if 'event' in participant.index:
+                row['accepted'] = 1 if participant['event'] == 'accepted' else 0
+            elif 'event_type' in participant.index:
+                row['accepted'] = 1 if participant['event_type'] == 'accepted' else 0
+                
+            # Add the row to our dataset
+            rows.append(row)
+    
+    # Convert to DataFrame
+    return pd.DataFrame(rows)
+
+# Create the feature dataset
+model_data = create_features(booking_log, participant_log)
+
+# Check the resulting dataset
+print("Model data shape:", model_data.shape)
+print("Sample data:")
+print(model_data.head())
+print("\nColumn list:", model_data.columns.tolist())
+print("\nMissing values:", model_data.isnull().sum())
+print("\nTarget distribution:", model_data['accepted'].value_counts())
+
+# Load the data
+booking_log = pd.read_csv('C:/Users/barig/Downloads/ds-assignment-master/data/raw/booking_log.csv')
+participant_log = pd.read_csv('C:/Users/barig/Downloads/ds-assignment-master/data/raw/participant_log.csv')
+
+# Display the first few rows of each dataset
+print("Booking Log Shape:", booking_log.shape)
+print("Participant Log Shape:", participant_log.shape)
+
+print("\nBooking Log Sample:")
+display(booking_log.head())
+
+print("\nParticipant Log Sample:")
+display(participant_log.head())
+
+# Check for missing values
+print("\nMissing values in Booking Log:")
+print(booking_log.isnull().sum())
+
+print("\nMissing values in Participant Log:")
+print(participant_log.isnull().sum())
+
+# Check data types
+print("\nBooking Log Data Types:")
+print(booking_log.dtypes)
+
+print("\nParticipant Log Data Types:")
+print(participant_log.dtypes)
+
+# Function to check for duplicate records
+def check_duplicates(df, name):
+    duplicates = df.duplicated().sum()
+    print(f"Number of duplicates in {name}: {duplicates}")
+    return duplicates
+
+# Check for duplicates
+booking_duplicates = check_duplicates(booking_log, "Booking Log")
+participant_duplicates = check_duplicates(participant_log, "Participant Log")
+
+# Remove duplicates if they exist
+if booking_duplicates > 0:
+    booking_log = booking_log.drop_duplicates().reset_index(drop=True)
+    
+if participant_duplicates > 0:
+    participant_log = participant_log.drop_duplicates().reset_index(drop=True)
+
+# Convert timestamp columns to datetime if they exist
+# Assuming there are timestamp columns, update column names as needed
+datetime_columns_booking = ['created_at', 'updated_at']  # Update based on actual column names
+datetime_columns_participant = ['created_at', 'updated_at']  # Update based on actual column names
+
+for col in datetime_columns_booking:
+    if col in booking_log.columns:
+        booking_log[col] = pd.to_datetime(booking_log[col])
+
+for col in datetime_columns_participant:
+    if col in participant_log.columns:
+        participant_log[col] = pd.to_datetime(participant_log[col])
+
+#shape of model_dataset before any preprocessing
+print("Original model_dataset shape:", model_dataset.shape)
+
+# Check how many rows have NaN values in the 'accepted' column
+print("Number of rows with NaN in 'accepted':", model_dataset['accepted'].isna().sum())
+print("Total rows:", len(model_dataset))
+
+# Summary statistics
+print("Booking Log Summary Statistics:")
+display(booking_log.describe())
+
+print("\nParticipant Log Summary Statistics:")
+display(participant_log.describe())
+
+# Examine event distributions
+if 'event_type' in booking_log.columns:
+    plt.figure(figsize=(10, 6))
+    sns.countplot(x='event_type', data=booking_log)
+    plt.title('Distribution of Booking Events')
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
+
+if 'event_type' in participant_log.columns:
+    plt.figure(figsize=(10, 6))
+    sns.countplot(x='event_type', data=participant_log)
+    plt.title('Distribution of Participant Events')
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
+
+# Analyze order acceptance rates
+# This will depend on the actual structure of your data
+# Here's a placeholder for the concept:
+if 'order_id' in participant_log.columns and 'event_type' in participant_log.columns:
+    # Count acceptances per order
+    acceptance_counts = participant_log[participant_log['event_type'] == 'accepted'].groupby('order_id').size()
+    total_participants = participant_log.groupby('order_id').size()
+    
+    acceptance_rates = acceptance_counts / total_participants
+    
+    plt.figure(figsize=(10, 6))
+    plt.hist(acceptance_rates, bins=20)
+    plt.title('Distribution of Order Acceptance Rates')
+    plt.xlabel('Acceptance Rate')
+    plt.ylabel('Count')
+    plt.show()
+
+# Function to extract features from the logs
+def extract_features(booking_df, participant_df):
+    # Create a dictionary to store features for each order
+    features = {}
+    
+    # Process booking log
+    for _, row in booking_df.iterrows():
+        order_id = row['order_id']
+        
+        if order_id not in features:
+            features[order_id] = {}
+            
+        # Extract booking-level features
+        # These are placeholders - update based on actual columns
+        if 'created_at' in row:
+            features[order_id]['booking_time'] = row['created_at'].hour
+        
+        if 'location_lat' in row and 'location_lon' in row:
+            features[order_id]['pickup_lat'] = row['location_lat']
+            features[order_id]['pickup_lon'] = row['location_lon']
+            
+        if 'destination_lat' in row and 'destination_lon' in row:
+            features[order_id]['destination_lat'] = row['destination_lat']
+            features[order_id]['destination_lon'] = row['destination_lon']
+            
+            # Calculate trip distance (simplified)
+            if all(k in features[order_id] for k in ['pickup_lat', 'pickup_lon', 'destination_lat', 'destination_lon']):
+                features[order_id]['trip_distance'] = np.sqrt(
+                    (features[order_id]['destination_lat'] - features[order_id]['pickup_lat'])**2 +
+                    (features[order_id]['destination_lon'] - features[order_id]['pickup_lon'])**2
+                )
+    
+    # Process participant log
+    for _, row in participant_df.iterrows():
+        order_id = row['order_id']
+        driver_id = row['driver_id']
+        
+        if order_id not in features:
+            features[order_id] = {}
+            
+        # Keep track of driver-specific features
+        driver_key = f'driver_{driver_id}'
+        if driver_key not in features[order_id]:
+            features[order_id][driver_key] = {}
+            
+        # Extract driver-level features
+        if 'event_type' in row:
+            event_type = row['event_type']
+            features[order_id][driver_key]['event'] = event_type
+            
+        if 'driver_lat' in row and 'driver_lon' in row:
+            features[order_id][driver_key]['driver_lat'] = row['driver_lat']
+            features[order_id][driver_key]['driver_lon'] = row['driver_lon']
+            
+            # Calculate distance to pickup
+            if all(k in features[order_id] for k in ['pickup_lat', 'pickup_lon']):
+                features[order_id][driver_key]['distance_to_pickup'] = np.sqrt(
+                    (features[order_id]['pickup_lat'] - row['driver_lat'])**2 +
+                    (features[order_id]['pickup_lon'] - row['driver_lon'])**2
+                )
+                
+        # Add driver rating if available
+        if 'driver_rating' in row:
+            features[order_id][driver_key]['driver_rating'] = row['driver_rating']
+            
+        # Add driver historical acceptance rate if available
+        if 'historical_acceptance_rate' in row:
+            features[order_id][driver_key]['historical_acceptance_rate'] = row['historical_acceptance_rate']
+    
+    return features
+
+# Extract features
+features_dict = extract_features(booking_log, participant_log)
+
+# Convert features to a dataframe format suitable for modeling
+def prepare_model_dataset(features_dict):
+    rows = []
+    
+    for order_id, order_features in features_dict.items():
+        base_features = {k: v for k, v in order_features.items() if not k.startswith('driver_')}
+        
+        # Process each driver for this order
+        for key, driver_features in order_features.items():
+            if key.startswith('driver_'):
+                driver_id = key.split('_')[1]
+                
+                # Create a row combining order and driver features
+                row = {
+                    'order_id': order_id,
+                    'driver_id': driver_id,
+                    **base_features,
+                    **driver_features
+                }
+                
+                # Add target variable (whether the driver accepted)
+                if 'event' in driver_features:
+                    row['accepted'] = 1 if driver_features['event'] == 'accepted' else 0
+                else:
+                    row['accepted'] = np.nan
+                
+                rows.append(row)
+    
+    return pd.DataFrame(rows)
+
+# Prepare the dataset
+model_dataset = prepare_model_dataset(features_dict)
+
+# Display the prepared dataset
+display(model_dataset.head())
+
+# Check for missing values
+print("\nMissing values in model dataset:")
+print(model_dataset.isnull().sum())
+
+# Handle missing values
+model_dataset = model_dataset.dropna(subset=['accepted'])  # Remove rows without target variable
+model_dataset = model_dataset.fillna(model_dataset.median())  # Fill remaining missing values with medians
+
+print("\nMissing values after handling:")
+print(model_dataset.isnull().sum())
+
+# Split the data into features and target
+X = model_dataset.drop(['order_id', 'driver_id', 'accepted'], axis=1)
+y = model_dataset['accepted']
+
+# Fix potential issue: Check for categorical variables that need encoding
+categorical_cols = X.select_dtypes(include=['object', 'category']).columns
+if len(categorical_cols) > 0:
+    print(f"Found categorical columns that need encoding: {categorical_cols}")
+    
+    # One-hot encode categorical variables
+    X = pd.get_dummies(X, columns=categorical_cols, drop_first=True)
+
+# Fix potential issue: Check for infinity or very large values
+X.replace([np.inf, -np.inf], np.nan, inplace=True)
+X.fillna(X.median(), inplace=True)
+
+# Split the data into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Fix potential issue: Feature scaling
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+# Fix potential issue: Imbalanced classes
+class_counts = y_train.value_counts()
+print("Class distribution in training set:")
+print(class_counts)
+
+# If there's class imbalance, adjust class weights
+if min(class_counts) / max(class_counts) < 0.2:
+    class_weight = 'balanced'
+    print("Using balanced class weights due to imbalance")
+else:
+    class_weight = None
+
+# Fix potential issue: Model selection/parameters
+model = RandomForestClassifier(
+    n_estimators=100,
+    max_depth=10,
+    min_samples_split=5,
+    min_samples_leaf=2,
+    class_weight=class_weight,
+    random_state=42
+)
+
+# Train the model
+model.fit(X_train_scaled, y_train)
+
+# Make predictions
+y_pred = model.predict(X_test_scaled)
+y_prob = model.predict_proba(X_test_scaled)[:, 1]
+
+# Evaluate the model
+metrics = {
+    'accuracy': accuracy_score(y_test, y_pred),
+    'precision': precision_score(y_test, y_pred),
+    'recall': recall_score(y_test, y_pred),
+    'f1': f1_score(y_test, y_pred),
+    'roc_auc': roc_auc_score(y_test, y_prob)
+}
+
+print("\nModel Performance Metrics:")
+for metric, value in metrics.items():
+    print(f"{metric}: {value:.4f}")
+
+# Save the metrics to a JSON file
+with open('submission/metrics.json', 'w') as f:
+    json.dump(metrics, f, indent=4)
+
+print("Metrics saved to submission/metrics.json")
+
